@@ -6,6 +6,8 @@ const JobDashboard = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [categories, setCategories] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -14,6 +16,9 @@ const JobDashboard = () => {
         setLoading(true);
         const response = await axios.get("http://localhost:3001/api/jobs/jobs");
         setJobs(response.data.jobs);
+        setCategories([
+          ...new Set(response.data.jobs.map((job) => job.category)), // Get unique categories
+        ]);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching jobs:", error);
@@ -54,6 +59,14 @@ const JobDashboard = () => {
     }
   };
 
+  const handleCategoryChange = (event) => {
+    setSelectedCategory(event.target.value);
+  };
+
+  const filteredJobs = selectedCategory
+    ? jobs.filter((job) => job.category === selectedCategory)
+    : jobs;
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -73,11 +86,26 @@ const JobDashboard = () => {
   return (
     <div className="bg-gray-100 min-h-screen p-6 py-12">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold mt-12 mb-6">Job Management Dashboard</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold mt-12">Job Management Dashboard</h1>
+
+          <select
+            className="px-4 py-2 mt-12 border rounded-md"
+            value={selectedCategory}
+            onChange={handleCategoryChange}
+          >
+            <option value="">Select Category</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {jobs.length > 0 ? (
-            jobs.map((job) => (
+          {filteredJobs.length > 0 ? (
+            filteredJobs.map((job) => (
               <div key={job._id} className="bg-white rounded-lg shadow-md overflow-hidden">
                 <div className="p-4">
                   <div className="flex justify-between items-start">

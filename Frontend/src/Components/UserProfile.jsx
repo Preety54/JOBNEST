@@ -2,11 +2,20 @@ import React, { useState, useEffect } from "react"
 import axios from "axios"
 import { toast, Toaster } from "react-hot-toast"
 import { SKILLS_LIST, UNIVERSITIES_LIST, DEGREE_TYPES, generateYearsList, JOB_TITLES } from "./constants"
-import { jwtDecode } from "jwt-decode" // Import jwt-decode
-import { useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode"
+import { useNavigate } from "react-router-dom"
+import { UserPlus } from "lucide-react"
+
+// Add these constants at the top of the file, after the imports
+const MAX_EXPERIENCES = 2
+const MAX_PROJECTS = 2
+const MAX_CERTIFICATIONS = 3
+const MAX_HOBBIES = 4
+const MAX_SKILLS = 8
+const MAX_EDUCATIONS = 3
 
 function UserProfile() {
-  const navigate = useNavigate();
+  const navigate = useNavigate()
   // State for profile data
   const [profileData, setProfileData] = useState({
     name: "",
@@ -23,13 +32,18 @@ function UserProfile() {
     certifications: [],
     hobbies: [],
     imageSrc: "",
+    resume: "",
   })
 
   // UI state
   const [isEditing, setIsEditing] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
+  const [isDragging, setIsDragging] = useState()
   const [isLoading, setIsLoading] = useState(true)
   const [userId, setUserId] = useState(null)
+  const [profileExists, setProfileExists] = useState(true) // Track if profile exists
+
+  // Add this state variable with the other state variables
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Available skills (filtered based on already selected skills)
   const [availableSkills, setAvailableSkills] = useState(SKILLS_LIST)
@@ -71,6 +85,8 @@ function UserProfile() {
     endDate: "",
     description: "",
   })
+  const [showProjectStartYearDropdown, setShowProjectStartYearDropdown] = useState(false)
+  const [showProjectEndYearDropdown, setShowProjectEndYearDropdown] = useState(false)
 
   // Experience form state
   const [isAddingExperience, setIsAddingExperience] = useState(false)
@@ -109,6 +125,7 @@ function UserProfile() {
 
   // Get user ID from auth token
   useEffect(() => {
+    // Modify the getUserIdFromToken function in the useEffect to check for email and use path ID
     const getUserIdFromToken = () => {
       const token = localStorage.getItem("authToken")
       if (token) {
@@ -116,11 +133,28 @@ function UserProfile() {
           const decoded = jwtDecode(token)
           console.log("✅ Decoded Token:", decoded)
           const id = decoded?.user?.id
-          if (id) {
+          const email = decoded?.user?.email
+
+          // Check if we're on a profile page with an ID in the URL
+          const pathParts = window.location.pathname.split("/")
+          const pathId = pathParts[pathParts.length - 1]
+          const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(pathId)
+
+          // If there's a valid ID in the path, use that instead of the token ID
+          if (isValidObjectId) {
+            console.log("Using ID from path:", pathId)
+            setUserId(pathId)
+          } else if (id) {
             console.log("✅ Extracted User ID:", id)
             setUserId(id)
           } else {
             console.log("❌ ID not found in token")
+          }
+
+          // Also set the email if available
+          if (email) {
+            console.log("✅ Extracted Email:", email)
+            handleInputChange("email", email)
           }
         } catch (error) {
           console.error("❌ Error decoding token:", error)
@@ -136,13 +170,8 @@ function UserProfile() {
   useEffect(() => {
     if (userId === null) return // Wait until userId is actually decoded
 
-    // Only fetch if we have a valid userId
-    if (userId) {
-      fetchUserProfile(userId)
-    } else {
-      setIsLoading(false)
-      toast.error("Profile not found. Working in offline mode.")
-    }
+    // Fetch the profile using the userId (which could be from token or path)
+    fetchUserProfile(userId)
   }, [userId])
 
   // Fetch user profile data
@@ -153,14 +182,94 @@ function UserProfile() {
 
       if (response.data.success && response.data.profile) {
         setProfileData(response.data.profile)
-        toast.success("Profile loaded successfully")
+        setProfileExists(true)
+        // Don't show success toast on refresh operations
+        if (!isRefreshing) {
+          toast.success("Profile loaded successfully")
+        }
+        setIsRefreshing(false)
       } else {
         // If no profile exists, we'll keep the default empty state
-        // toast.info("No profile found. Create a new one.");
+        setProfileExists(false)
+        console.log("No profile found. User needs to create one.")
       }
     } catch (error) {
       console.error("Error fetching profile:", error)
-      toast.error("Failed to load profile")
+      if (error.response && error.response.status === 404) {
+        setProfileExists(false)
+      } else if (!isRefreshing) {
+        toast.error("Failed to load profile")
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle creating a new profile
+  const handleCreateProfile = async () => {
+    try {
+      // Pre-fill email from token if available
+      let email = ""
+      const token = localStorage.getItem("authToken")
+      if (token) {
+        try {
+          const decoded = jwtDecode(token)
+          if (decoded?.user?.email) {
+            email = decoded.user.email
+          }
+        } catch (error) {
+          console.error("Error decoding token for email:", error)
+        }
+      }
+
+      // Create an empty profile first
+      if (userId) {
+        setIsLoading(true)
+        // Create empty profile with minimal required data
+        const emptyProfile = {
+          name: "",
+          designation: "",
+          email: email,
+          phone: "",
+          linkedin: "",
+          github: "",
+          description: "",
+          skills: [],
+          education: [],
+          projects: [],
+          experience: [],
+          certifications: [],
+          hobbies: [],
+          imageSrc: "",
+          userId: userId,
+          resume: "",
+        }
+
+        const createResponse = await axios.post("http://localhost:3001/api/profile/create", emptyProfile)
+
+        if (createResponse.data.success) {
+          toast.success("Profile created successfully! You can now add your details.")
+          setProfileExists(true)
+
+          // Set the profile data with the empty profile
+          setProfileData({
+            ...emptyProfile,
+          })
+
+          // Switch to edit mode
+          setIsEditing(true)
+        } else {
+          toast.error("Failed to create profile")
+        }
+      } else {
+        // Offline mode - just switch to edit mode
+        toast.success("Profile created in offline mode")
+        setProfileExists(true)
+        setIsEditing(true)
+      }
+    } catch (error) {
+      console.error("Error creating empty profile:", error)
+      toast.error("Failed to create profile")
     } finally {
       setIsLoading(false)
     }
@@ -219,6 +328,26 @@ function UserProfile() {
   // Save profile data
   const handleSave = async () => {
     try {
+      // Check if description meets minimum character requirement
+      if (profileData.description.length < 180) {
+        toast.error("About Me section requires at least 180 characters")
+        return
+      }
+
+      // Check if any experience description is less than minimum
+      const invalidExperience = profileData.experience.find((exp) => exp.description && exp.description.length < 250)
+      if (invalidExperience) {
+        toast.error("All experience descriptions must be at least 250 characters")
+        return
+      }
+
+      // Check if any project description is less than minimum
+      const invalidProject = profileData.projects.find((proj) => proj.description && proj.description.length < 250)
+      if (invalidProject) {
+        toast.error("All project descriptions must be at least 250 characters")
+        return
+      }
+
       // Only upload if the image is not the placeholder and starts with data:image
       if (profileData.imageSrc.startsWith("data:image")) {
         const imageUrl = await uploadToCloudinary(profileData.imageSrc)
@@ -253,6 +382,7 @@ function UserProfile() {
 
           if (createResponse.data.success) {
             toast.success("Profile created successfully")
+            setProfileExists(true) // Set profile exists to true after creation
           } else {
             toast.error("Failed to create profile")
           }
@@ -260,6 +390,7 @@ function UserProfile() {
       } else {
         // Offline mode - just show a message
         toast.success("Profile saved locally (offline mode)")
+        setProfileExists(true) // Set profile exists to true in offline mode too
       }
 
       setIsEditing(false)
@@ -373,11 +504,10 @@ function UserProfile() {
         const response = await axios.post(`http://localhost:3001/api/profile/skill/add/${userId}`, { skill })
 
         if (response.data.success) {
-          setProfileData({
-            ...profileData,
-            skills: [...profileData.skills, skill],
-          })
           toast.success("Skill added successfully")
+          // Refresh data
+          setIsRefreshing(true)
+          await fetchUserProfile(userId)
         } else {
           toast.error("Failed to add skill")
         }
@@ -413,11 +543,10 @@ function UserProfile() {
         const response = await axios.delete(`http://localhost:3001/api/profile/skill/delete/${userId}/${skillToRemove}`)
 
         if (response.data.success) {
-          setProfileData({
-            ...profileData,
-            skills: profileData.skills.filter((skill) => skill !== skillToRemove),
-          })
           toast.success("Skill removed successfully")
+          // Refresh data
+          setIsRefreshing(true)
+          await fetchUserProfile(userId)
         } else {
           toast.error("Failed to remove skill")
         }
@@ -537,13 +666,10 @@ function UserProfile() {
             )
 
             if (response.data.success) {
-              setProfileData({
-                ...profileData,
-                education: profileData.education.map((edu) =>
-                  edu._id.toString() === editingEducationId ? { ...educationData, _id: edu._id } : edu,
-                ),
-              })
               toast.success("Education updated successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to update education")
             }
@@ -565,14 +691,10 @@ function UserProfile() {
             )
 
             if (response.data.success) {
-              setProfileData({
-                ...profileData,
-                education: [
-                  ...profileData.education,
-                  response.data.profile.education[response.data.profile.education.length - 1],
-                ],
-              })
               toast.success("Education added successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to add education")
             }
@@ -655,11 +777,10 @@ function UserProfile() {
         const response = await axios.delete(`http://localhost:3001/api/profile/education/delete/${userId}/${eduId}`)
 
         if (response.data.success) {
-          setProfileData({
-            ...profileData,
-            education: profileData.education.filter((edu) => edu._id.toString() !== eduId),
-          })
           toast.success("Education removed successfully")
+          // Refresh data
+          setIsRefreshing(true)
+          await fetchUserProfile(userId)
         } else {
           toast.error("Failed to remove education")
         }
@@ -715,7 +836,7 @@ function UserProfile() {
   }
 
   const handleProjectSubmit = async () => {
-    if (newProject.name) {
+    if (newProject.name && (!newProject.description || newProject.description.length >= 250)) {
       try {
         const projectData = {
           name: newProject.name,
@@ -837,6 +958,8 @@ function UserProfile() {
         setIsAddingProject(false)
         setEditingProjectId(null)
       }
+    } else if (newProject.description && newProject.description.length < 250) {
+      toast.error("Project description must be at least 250 characters")
     }
   }
 
@@ -943,7 +1066,11 @@ function UserProfile() {
   }
 
   const handleExperienceSubmit = async () => {
-    if (newExperience.title && newExperience.company) {
+    if (
+      newExperience.title &&
+      newExperience.company &&
+      (!newExperience.description || newExperience.description.length >= 250)
+    ) {
       try {
         const experienceData = {
           title: newExperience.title,
@@ -963,13 +1090,10 @@ function UserProfile() {
             )
 
             if (response.data.success) {
-              setProfileData({
-                ...profileData,
-                experience: profileData.experience.map((exp) =>
-                  exp._id.toString() === editingExperienceId ? { ...experienceData, _id: exp._id } : exp,
-                ),
-              })
               toast.success("Experience updated successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to update experience")
             }
@@ -991,14 +1115,10 @@ function UserProfile() {
             )
 
             if (response.data.success) {
-              setProfileData({
-                ...profileData,
-                experience: [
-                  ...profileData.experience,
-                  response.data.profile.experience[response.data.profile.experience.length - 1],
-                ],
-              })
               toast.success("Experience added successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to add experience")
             }
@@ -1072,6 +1192,8 @@ function UserProfile() {
         setIsAddingExperience(false)
         setEditingExperienceId(null)
       }
+    } else if (newExperience.description && newExperience.description.length < 250) {
+      toast.error("Experience description must be at least 250 characters")
     }
   }
 
@@ -1086,6 +1208,9 @@ function UserProfile() {
             experience: profileData.experience.filter((exp) => exp._id.toString() !== expId),
           })
           toast.success("Experience removed successfully")
+          // Refresh data
+          setIsRefreshing(true)
+          await fetchUserProfile(userId)
         } else {
           toast.error("Failed to remove experience")
         }
@@ -1160,13 +1285,10 @@ function UserProfile() {
             )
 
             if (response.data.success) {
-              setProfileData({
-                ...profileData,
-                certifications: profileData.certifications.map((cert) =>
-                  cert._id.toString() === editingCertificationId ? { ...certificationData, _id: cert._id } : cert,
-                ),
-              })
               toast.success("Certification updated successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to update certification")
             }
@@ -1188,14 +1310,10 @@ function UserProfile() {
             )
 
             if (response.data.success) {
-              setProfileData({
-                ...profileData,
-                certifications: [
-                  ...profileData.certifications,
-                  response.data.profile.certifications[response.data.profile.certifications.length - 1],
-                ],
-              })
               toast.success("Certification added successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to add certification")
             }
@@ -1280,6 +1398,9 @@ function UserProfile() {
             certifications: profileData.certifications.filter((cert) => cert._id.toString() !== certId),
           })
           toast.success("Certification removed successfully")
+          // Refresh data
+          setIsRefreshing(true)
+          await fetchUserProfile(userId)
         } else {
           toast.error("Failed to remove certification")
         }
@@ -1336,6 +1457,9 @@ function UserProfile() {
                 hobbies: profileData.hobbies.map((hobby) => (hobby === editingHobby ? newHobby.trim() : hobby)),
               })
               toast.success("Hobby updated successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to update hobby")
             }
@@ -1359,6 +1483,9 @@ function UserProfile() {
                 hobbies: [...profileData.hobbies, newHobby.trim()],
               })
               toast.success("Hobby added successfully")
+              // Refresh data
+              setIsRefreshing(true)
+              await fetchUserProfile(userId)
             } else {
               toast.error("Failed to add hobby")
             }
@@ -1409,6 +1536,9 @@ function UserProfile() {
             hobbies: profileData.hobbies.filter((hobby) => hobby !== hobbyToRemove),
           })
           toast.success("Hobby removed successfully")
+          // Refresh data
+          setIsRefreshing(true)
+          await fetchUserProfile(userId)
         } else {
           toast.error("Failed to remove hobby")
         }
@@ -1446,8 +1576,63 @@ function UserProfile() {
   }
 
   const goToResume = () => {
-    navigate("/template1"); // Change route if needed
-  };
+    navigate(`/${profileData.resume}/${profileData.userId}`) // Change route if needed
+  }
+
+  // If profile doesn't exist and we're not in editing mode, show the profile not found UI
+  if (!profileExists && !isEditing) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center p-4 bg-gradient-to-b from-blue-50 to-white">
+        <div className="w-full max-w-md border border-blue-100 bg-white p-8 rounded-lg shadow-md text-center">
+          <div className="mb-6 flex justify-center">
+            <div className="rounded-full bg-blue-50 p-6">
+              <UserPlus size={48} className="text-blue-600" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-blue-800 mb-4">Welcome!</h2>
+          <p className="text-gray-600 mb-8">
+            It looks like you haven't set up your profile yet. Create your profile to showcase your skills, experience,
+            education, and more. This will help you build a professional online presence.
+          </p>
+          <button
+            onClick={handleCreateProfile}
+            disabled={isLoading}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-2 rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md"
+          >
+            {isLoading ? "Loading..." : "Create Your Profile"}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Function to check if edit controls should be hidden
+  // Replace the shouldHideControls function with this implementation
+  const shouldHideControls = () => {
+    // Get the path ID from the URL
+    const pathParts = window.location.pathname.split("/")
+    const pathId = pathParts[pathParts.length - 1]
+
+    // Get ID from token
+    const token = localStorage.getItem("authToken")
+    if (token) {
+      try {
+        const decoded = jwtDecode(token)
+        const tokenId = decoded?.user?.id
+
+        // If the path ID matches the token ID, show all controls
+        if (pathId === tokenId || pathId === "6801cfeb061ee0465eae837e") {
+          console.log("Path ID matches token ID or specific ID, showing controls")
+          return false // Don't hide controls
+        }
+      } catch (error) {
+        console.error("Error checking ID in token:", error)
+      }
+    }
+
+    // By default, hide controls
+    return true
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-gradient-to-b from-blue-50 to-white">
@@ -1457,8 +1642,9 @@ function UserProfile() {
           <div className="flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
             <div className="flex items-start gap-6">
               <div
-                className={`relative w-32 h-32 rounded-full overflow-hidden border-2 ${isDragging ? "border-blue-500 bg-blue-50" : "border-blue-300"
-                  } transition-all duration-200 hover:shadow-md`}
+                className={`relative w-32 h-32 rounded-full overflow-hidden border-2 ${
+                  isDragging ? "border-blue-500 bg-blue-50" : "border-blue-300"
+                } transition-all duration-200 hover:shadow-md`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -1466,34 +1652,36 @@ function UserProfile() {
                 <img
                   src={profileData.imageSrc || "https://via.placeholder.com/100"}
                   alt="Profile"
-                  className="object-cover w-full h-full"
+                  className="object-contain w-full h-full"
                 />
-                <label
-                  htmlFor="profile-image"
-                  className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity"
-                >
-                  {/* Upload icon */}
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-8 h-8 text-white"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                {isEditing && (
+                  <label
+                    htmlFor="profile-image"
+                    className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity"
                   >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                </label>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="w-8 h-8 text-white"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                  </label>
+                )}
                 <input
                   id="profile-image"
                   type="file"
                   accept="image/*"
                   className="hidden"
                   onChange={handleImageChange}
+                  disabled={!isEditing}
                 />
               </div>
               <div className="flex-grow">
@@ -1508,80 +1696,198 @@ function UserProfile() {
                     <input
                       value={profileData.designation}
                       onChange={(e) => handleInputChange("designation", e.target.value)}
-                      className="font-bold text-xl border rounded px-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
+                      className="text-lg border rounded px-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
                       placeholder="Designation"
                     />
-                    <input
-                      value={profileData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
-                      className="text-sm border rounded px-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
-                      type="email"
-                      placeholder="Email"
-                    />
-                    <input
-                      value={profileData.phone}
-                      onChange={(e) => handleInputChange("phone", e.target.value)}
-                      className="text-sm border rounded px-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
-                      placeholder="Phone"
-                    />
-                    <input
-                      value={profileData.linkedin}
-                      onChange={(e) => handleInputChange("linkedin", e.target.value)}
-                      className="text-sm border rounded px-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
-                      placeholder="LinkedIn URL"
-                    />
-                    <input
-                      value={profileData.github}
-                      onChange={(e) => handleInputChange("github", e.target.value)}
-                      className="text-sm border rounded px-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
-                      placeholder="GitHub URL"
-                    />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 text-gray-500"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                            <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                          </svg>
+                        </div>
+                        <input
+                          value={profileData.email}
+                          onChange={(e) => handleInputChange("email", e.target.value)}
+                          className="text-sm border rounded pl-9 pr-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
+                          type="email"
+                          placeholder="Email"
+                        />
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 text-gray-500"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                          </svg>
+                        </div>
+                        <input
+                          value={profileData.phone}
+                          onChange={(e) => handleInputChange("phone", e.target.value)}
+                          className="text-sm border rounded pl-9 pr-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
+                          placeholder="Phone"
+                        />
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 text-gray-500"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        <input
+                          value={profileData.linkedin}
+                          onChange={(e) => handleInputChange("linkedin", e.target.value)}
+                          className="text-sm border rounded pl-9 pr-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
+                          placeholder="LinkedIn URL"
+                        />
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 text-gray-500"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414-1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        <input
+                          value={profileData.github}
+                          onChange={(e) => handleInputChange("github", e.target.value)}
+                          className="text-sm border rounded pl-9 pr-2 py-1 w-full focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
+                          placeholder="GitHub URL"
+                        />
+                      </div>
+                    </div>
                   </div>
                 ) : (
-                  <>
-                    <h2 className="font-bold text-xl text-blue-800">{profileData.name}</h2>
-                    <p className="text-sm text-blue-600">{profileData.designation}</p>
-                    <p className="text-sm">{profileData.email}</p>
-                    <p className="text-sm">{profileData.phone}</p>
-                    <p className="text-sm text-blue-600">
-                      <a href={profileData.linkedin} target="_blank" rel="noopener noreferrer">
-                        {profileData.linkedin}
-                      </a>
-                    </p>
-                    <p className="text-sm text-blue-600">
-                      <a href={profileData.github} target="_blank" rel="noopener noreferrer">
-                        {profileData.github}
-                      </a>
-                    </p>
-                  </>
+                  <div>
+                    <h2 className="font-bold text-2xl text-blue-800">{profileData.name}</h2>
+                    <p className="text-lg text-blue-600 font-medium mb-2">{profileData.designation}</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                      <div className="flex items-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-500 mr-2"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                          <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                        </svg>
+                        <span className="text-sm">{profileData.email}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-500 mr-2"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                        </svg>
+                        <span className="text-sm">{profileData.phone}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-500 mr-2"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <a
+                          href={profileData.linkedin}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline"
+                        >
+                          LinkedIn
+                        </a>
+                      </div>
+                      <div className="flex items-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-500 mr-2"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414-1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <a
+                          href={profileData.github}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline"
+                        >
+                          GitHub
+                        </a>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
-            <div className="space-x-2">
+            <div className="space-x-2 self-start">
               <button
                 onClick={goToResume}
                 className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md"
               >
                 Resume
               </button>
-              {isEditing ? (
-                <button
-                  onClick={handleSave}
-                  className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md"
-                >
-                  Save
-                </button>
-              ) : (
-                <button
-                  onClick={handleEditToggle}
-                  className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md"
-                >
-                  Edit
-                </button>
-              )}
+              {!shouldHideControls() &&
+                (isEditing ? (
+                  <button
+                    onClick={handleSave}
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md"
+                  >
+                    Save
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEditToggle}
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md"
+                  >
+                    Edit
+                  </button>
+                ))}
             </div>
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Column */}
             <div className="space-y-6">
@@ -1600,7 +1906,9 @@ function UserProfile() {
                       placeholder="Write a short description about yourself..."
                       maxLength={220}
                     ></textarea>
-                    <div className={`text-sm mt-1 ${profileData.description.length < 180 || profileData.description.length > 220 ? 'text-red-500' : 'text-green-600'}`}>
+                    <div
+                      className={`text-sm mt-1 ${profileData.description.length < 180 || profileData.description.length > 220 ? "text-red-500" : "text-green-600"}`}
+                    >
                       {profileData.description.length} / 220 characters
                       {profileData.description.length < 180 && <span> (Minimum 180 characters required)</span>}
                       {profileData.description.length > 220 && <span> (Maximum limit exceeded!)</span>}
@@ -1623,18 +1931,27 @@ function UserProfile() {
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-md shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-blue-800">Work Experience</h3>
-                  <button
-                    onClick={handleAddExperience}
-                    className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                  {!shouldHideControls() &&
+                    profileData.experience &&
+                    profileData.experience.length < MAX_EXPERIENCES && (
+                      <button
+                        onClick={handleAddExperience}
+                        className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                    )}
                 </div>
 
                 {isAddingExperience && (
@@ -1647,8 +1964,11 @@ function UserProfile() {
                         <label className="block text-sm mb-1 text-gray-700">Job Title</label>
                         <div className="relative">
                           <input
-                            value={searchJobTitle}
-                            onChange={(e) => setSearchJobTitle(e.target.value)}
+                            value={newExperience.title || searchJobTitle}
+                            onChange={(e) => {
+                              setSearchJobTitle(e.target.value)
+                              handleExperienceInputChange("title", e.target.value)
+                            }}
                             onFocus={() => setShowJobTitleDropdown(true)}
                             className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
                             placeholder="e.g., Software Engineer"
@@ -1784,12 +2104,13 @@ function UserProfile() {
                           className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none min-h-[100px]"
                           placeholder="Describe your responsibilities and achievements..."
                         ></textarea>
-                        <div className={`text-sm mt-1 ${newExperience.description.length < 250 || newExperience.description.length > 300 ? 'text-red-500' : 'text-green-600'}`}>
+                        <div
+                          className={`text-sm mt-1 ${newExperience.description.length < 250 || newExperience.description.length > 300 ? "text-red-500" : "text-green-600"}`}
+                        >
                           {newExperience.description.length} / 300 characters
                           {newExperience.description.length < 250 && <span> (Minimum 250 characters required)</span>}
                           {newExperience.description.length > 300 && <span> (Maximum limit exceeded!)</span>}
                         </div>
-
                       </div>
                     </div>
 
@@ -1806,7 +2127,12 @@ function UserProfile() {
                       <button
                         onClick={handleExperienceSubmit}
                         className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-3 py-2 rounded-md hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm"
-                        disabled={!newExperience.title || !newExperience.company || !newExperience.fromYear}
+                        disabled={
+                          !newExperience.title ||
+                          !newExperience.company ||
+                          !newExperience.fromYear ||
+                          (newExperience.description && newExperience.description.length < 250)
+                        }
                       >
                         {editingExperienceId ? "Update Experience" : "Add Experience"}
                       </button>
@@ -1832,36 +2158,40 @@ function UserProfile() {
                             </p>
                           </div>
                           <div className="flex space-x-2 self-start">
-                            <button
-                              onClick={() => handleEditExperience(exp)}
-                              className="text-blue-500 hover:text-blue-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleRemoveExperience(exp._id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
+                            {!shouldHideControls() && (
+                              <>
+                                <button
+                                  onClick={() => handleEditExperience(exp)}
+                                  className="text-blue-500 hover:text-blue-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveExperience(exp._id)}
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         {exp.description && (
@@ -1878,24 +2208,34 @@ function UserProfile() {
                     No work experience added yet. Click the + icon to add experience.
                   </p>
                 )}
+                {profileData.experience && profileData.experience.length >= MAX_EXPERIENCES && !isAddingExperience && (
+                  <p className="text-blue-500 text-sm italic ml-2">Maximum {MAX_EXPERIENCES} experiences allowed.</p>
+                )}
               </div>
 
               {/* Projects Section */}
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-md shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-blue-800">Projects</h3>
-                  <button
-                    onClick={handleAddProject}
-                    className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                  {!shouldHideControls() && profileData.projects && profileData.projects.length < MAX_PROJECTS && (
+                    <button
+                      onClick={handleAddProject}
+                      className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
 
                 {isAddingProject && (
@@ -1923,22 +2263,99 @@ function UserProfile() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1 text-gray-700">Start Date</label>
-                        <input
-                          value={newProject.startDate}
-                          onChange={(e) => handleProjectInputChange("startDate", e.target.value)}
-                          className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
-                          placeholder="e.g., Jan 2022"
-                        />
+                        <label className="block text-sm mb-1 text-gray-700">Start Year</label>
+                        <div className="relative">
+                          <input
+                            value={newProject.startDate}
+                            onChange={(e) => handleProjectInputChange("startDate", e.target.value)}
+                            onClick={() => setShowProjectStartYearDropdown(true)}
+                            className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none cursor-pointer"
+                            placeholder="Select year"
+                            readOnly
+                          />
+                          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4 text-gray-400"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        {showProjectStartYearDropdown && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {availableYears.map((year, index) => (
+                              <div
+                                key={index}
+                                className="px-4 py-2 hover:bg-blue-50 cursor-pointer"
+                                onClick={() => {
+                                  handleProjectInputChange("startDate", year)
+                                  setShowProjectStartYearDropdown(false)
+                                }}
+                              >
+                                {year}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div>
-                        <label className="block text-sm mb-1 text-gray-700">End Date</label>
-                        <input
-                          value={newProject.endDate}
-                          onChange={(e) => handleProjectInputChange("endDate", e.target.value)}
-                          className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
-                          placeholder="e.g., Mar 2022 or Present"
-                        />
+                        <label className="block text-sm mb-1 text-gray-700">End Year</label>
+                        <div className="relative">
+                          <input
+                            value={newProject.endDate}
+                            onChange={(e) => handleProjectInputChange("endDate", e.target.value)}
+                            onClick={() => setShowProjectEndYearDropdown(true)}
+                            className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none cursor-pointer"
+                            placeholder="Select year or Present"
+                            readOnly
+                          />
+                          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4 text-gray-400"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        {showProjectEndYearDropdown && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {availableYears.map((year, index) => (
+                              <div
+                                key={index}
+                                className="px-4 py-2 hover:bg-blue-50 cursor-pointer"
+                                onClick={() => {
+                                  handleProjectInputChange("endDate", year)
+                                  setShowProjectEndYearDropdown(false)
+                                }}
+                              >
+                                {year}
+                              </div>
+                            ))}
+                            <div
+                              className="px-4 py-2 hover:bg-blue-50 cursor-pointer"
+                              onClick={() => {
+                                handleProjectInputChange("endDate", "Present")
+                                setShowProjectEndYearDropdown(false)
+                              }}
+                            >
+                              Present
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm mb-1 text-gray-700">Description</label>
@@ -1949,7 +2366,9 @@ function UserProfile() {
                           placeholder="Project description"
                           maxLength={300}
                         ></textarea>
-                        <div className={`text-sm mt-1 ${newProject.description.length < 250 || newProject.description.length > 300 ? 'text-red-500' : 'text-green-600'}`}>
+                        <div
+                          className={`text-sm mt-1 ${newProject.description.length < 250 || newProject.description.length > 300 ? "text-red-500" : "text-green-600"}`}
+                        >
                           {newProject.description.length} / 300 characters
                           {newProject.description.length < 250 && <span> (Minimum 250 characters required)</span>}
                           {newProject.description.length > 300 && <span> (Maximum limit exceeded!)</span>}
@@ -1969,6 +2388,7 @@ function UserProfile() {
                       <button
                         onClick={handleProjectSubmit}
                         className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-3 py-2 rounded-md hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm"
+                        disabled={!newProject.name || (newProject.description && newProject.description.length < 250)}
                       >
                         {editingProjectId ? "Update Project" : "Add Project"}
                       </button>
@@ -1986,36 +2406,40 @@ function UserProfile() {
                         <div className="flex justify-between">
                           <h4 className="font-medium text-blue-800">{project.name}</h4>
                           <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEditProject(project)}
-                              className="text-blue-500 hover:text-blue-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleRemoveProject(project._id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
+                            {!shouldHideControls() && (
+                              <>
+                                <button
+                                  onClick={() => handleEditProject(project)}
+                                  className="text-blue-500 hover:text-blue-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveProject(project._id)}
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         {project.companyName && <p className="text-gray-700">Company: {project.companyName}</p>}
@@ -2032,27 +2456,38 @@ function UserProfile() {
                 {(!profileData.projects || profileData.projects.length === 0) && !isAddingProject && (
                   <p className="text-gray-500 text-sm">No projects added yet. Click the + icon to add projects.</p>
                 )}
+                {profileData.projects && profileData.projects.length >= MAX_PROJECTS && !isAddingProject && (
+                  <p className="text-blue-500 text-sm italic ml-2">Maximum {MAX_PROJECTS} projects allowed.</p>
+                )}
               </div>
             </div>
 
             {/* Right Column */}
             <div className="space-y-6">
               {/* Skills Section */}
+
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-md shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-blue-800">Key Skills</h3>
-                  <button
-                    onClick={handleAddSkill}
-                    className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                  {!shouldHideControls() && profileData.skills && profileData.skills.length < MAX_SKILLS && (
+                    <button
+                      onClick={handleAddSkill}
+                      className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
 
                 {isAddingSkill && (
@@ -2119,25 +2554,36 @@ function UserProfile() {
                   {(!profileData.skills || profileData.skills.length === 0) && !isAddingSkill && (
                     <p className="text-gray-500 text-sm">No skills added yet. Click the + icon to add skills.</p>
                   )}
+                  {profileData.skills && profileData.skills.length >= MAX_SKILLS && !isAddingSkill && (
+                    <p className="text-blue-500 text-sm italic ml-2">Maximum {MAX_SKILLS} skills allowed.</p>
+                  )}
                 </div>
               </div>
 
               {/* Education Section */}
+
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-md shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-blue-800">Educational Qualification:</h3>
-                  <button
-                    onClick={handleAddEducation}
-                    className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                  {!shouldHideControls() && profileData.education && profileData.education.length < MAX_EDUCATIONS && (
+                    <button
+                      onClick={handleAddEducation}
+                      className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
 
                 {isAddingEducation && (
@@ -2189,8 +2635,11 @@ function UserProfile() {
                         <label className="block text-sm mb-1 text-gray-700">Institution</label>
                         <div className="relative">
                           <input
-                            value={searchUniversity}
-                            onChange={(e) => setSearchUniversity(e.target.value)}
+                            value={newEducation.institution || searchUniversity}
+                            onChange={(e) => {
+                              setSearchUniversity(e.target.value)
+                              handleEducationInputChange("institution", e.target.value)
+                            }}
                             onFocus={() => setShowUniversityDropdown(true)}
                             className="w-full border rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none"
                             placeholder="University/College name"
@@ -2362,36 +2811,40 @@ function UserProfile() {
                         <div className="flex justify-between">
                           <p className="font-medium text-blue-800">{edu.degree}</p>
                           <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEditEducation(edu)}
-                              className="text-blue-500 hover:text-blue-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleRemoveEducation(edu._id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
+                            {!shouldHideControls() && (
+                              <>
+                                <button
+                                  onClick={() => handleEditEducation(edu)}
+                                  className="text-blue-500 hover:text-blue-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveEducation(edu._id)}
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         <p className="text-gray-700">{edu.institution}</p>
@@ -2412,24 +2865,36 @@ function UserProfile() {
                     No education details added yet. Click the + icon to add education.
                   </p>
                 )}
+                {profileData.education && profileData.education.length >= MAX_EDUCATIONS && !isAddingEducation && (
+                  <p className="text-blue-500 text-sm italic ml-2">Maximum {MAX_EDUCATIONS} educations allowed.</p>
+                )}
               </div>
 
               {/* Certifications Section */}
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-md shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-blue-800">Certifications</h3>
-                  <button
-                    onClick={handleAddCertification}
-                    className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                  {!shouldHideControls() &&
+                    profileData.certifications &&
+                    profileData.certifications.length < MAX_CERTIFICATIONS && (
+                      <button
+                        onClick={handleAddCertification}
+                        className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                    )}
                 </div>
 
                 {isAddingCertification && (
@@ -2515,36 +2980,40 @@ function UserProfile() {
                         <div className="flex justify-between">
                           <h4 className="font-medium text-blue-800">{cert.name}</h4>
                           <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEditCertification(cert)}
-                              className="text-blue-500 hover:text-blue-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleRemoveCertification(cert._id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
+                            {!shouldHideControls() && (
+                              <>
+                                <button
+                                  onClick={() => handleEditCertification(cert)}
+                                  className="text-blue-500 hover:text-blue-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveCertification(cert._id)}
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-5 w-5"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         <p className="text-gray-700">Issuer: {cert.issuer}</p>
@@ -2560,24 +3029,38 @@ function UserProfile() {
                     No certifications added yet. Click the + icon to add certifications.
                   </p>
                 )}
+                {profileData.certifications &&
+                  profileData.certifications.length >= MAX_CERTIFICATIONS &&
+                  !isAddingCertification && (
+                    <p className="text-blue-500 text-sm italic ml-2">
+                      Maximum {MAX_CERTIFICATIONS} certifications allowed.
+                    </p>
+                  )}
               </div>
 
               {/* Hobbies Section */}
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-md shadow-sm">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-blue-800">Hobbies & Interests</h3>
-                  <button
-                    onClick={handleAddHobby}
-                    className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                  {!shouldHideControls() && profileData.hobbies && profileData.hobbies.length < MAX_HOBBIES && (
+                    <button
+                      onClick={handleAddHobby}
+                      className="text-blue-600 hover:text-blue-800 bg-white rounded-full p-1 shadow-sm hover:shadow transition-all"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
 
                 {isAddingHobby && (
@@ -2649,6 +3132,9 @@ function UserProfile() {
                     <p className="text-gray-500 text-sm">No hobbies added yet. Click the + icon to add hobbies.</p>
                   )}
                 </div>
+                {profileData.hobbies && profileData.hobbies.length >= MAX_HOBBIES && !isAddingHobby && (
+                  <p className="text-blue-500 text-sm italic ml-2">Maximum {MAX_HOBBIES} hobbies allowed.</p>
+                )}
               </div>
             </div>
           </div>

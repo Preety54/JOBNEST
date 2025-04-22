@@ -9,11 +9,7 @@ const AdminHome = () => {
   return (
     <div>
         <AdminNavbar/>
-        {/* <p className='mt-32 font-bold text-purple-700'>hello i am admin homepage</p> */}
         <Adminhero />
-        {/* <AddJob /> */}
-        
-      
     </div>
   )
 }

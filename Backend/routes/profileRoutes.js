@@ -22,6 +22,7 @@ import {
   addHobby,
   deleteHobby,
   updateProfileImage,
+  getProfileByUserIds
 } from "../controllers/profile.controller.js"
 
 // Import middleware if you have authentication
@@ -66,5 +67,8 @@ router.delete("/hobby/delete/:userId/:hobby", deleteHobby)
 
 // Profile image route
 router.put("/image/update/:userId", updateProfileImage)
+
+// Get profile by user ID
+router.get("/:id", getProfileByUserIds)
 
 export default router

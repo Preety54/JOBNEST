@@ -9,6 +9,7 @@ const Register = () => {
     email: "",
     phone: "",
     password: "",
+    location:"",
     confirmPassword: "",
   });
 
@@ -104,6 +105,18 @@ const Register = () => {
               name="phone"
               placeholder="Enter Phone Number"
               value={formData.phone}
+              onChange={handleChange}
+              className="w-full h-12 p-4 rounded-full bg-white text-black focus:outline-none focus:ring-2 focus:ring-blue-400"
+              required
+            />
+          </div>
+
+          <div className="w-full">
+            <input
+              type="text"
+              name="location"
+              placeholder="Enter your location"
+              value={formData.location}
               onChange={handleChange}
               className="w-full h-12 p-4 rounded-full bg-white text-black focus:outline-none focus:ring-2 focus:ring-blue-400"
               required

@@ -15,26 +15,50 @@ const ResumeTemplate = () => {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const token = localStorage.getItem("authToken");
-      if (!token) return;
+      const pathSegments = window.location.pathname.split("/");
+      const templateName = pathSegments[1];
+      const pathUserId = pathSegments[pathSegments.length - 1];
+
+      if (!pathUserId) {
+        console.error("No userId found in URL");
+        return;
+      }
 
       try {
-        const decoded = jwtDecode(token);
-        const userId = decoded?.user?.id;
-        if (!userId) return;
-
-        const res = await axios.get(`http://localhost:3001/api/profile/user/${userId}`);
+        const res = await axios.get(`http://localhost:3001/api/profile/user/${pathUserId}`);
         if (res.data.success && res.data.profile) {
-          setData(res.data.profile);
+          const userProfile = res.data.profile;
 
-          // Set counts for different sections
+          if (userProfile.resume !== templateName) {
+            setData({ error: "Resume not found" });
+            return;
+          }
+
+          // Set section counts
           setCounts({
-            educationCount: res.data.profile.education?.length || 0,
-            skillsCount: res.data.profile.skills?.length || 0,
-            projectsCount: res.data.profile.projects?.length || 0,
-            experienceCount: res.data.profile.experience?.length || 0,
-            certificationsCount: res.data.profile.certifications?.length || 0,
-            hobbiesCount: res.data.profile.hobbies?.length || 0,
+            educationCount: userProfile.education?.length || 0,
+            skillsCount: userProfile.skills?.length || 0,
+            projectsCount: userProfile.projects?.length || 0,
+            experienceCount: userProfile.experience?.length || 0,
+            certificationsCount: userProfile.certifications?.length || 0,
+            hobbiesCount: userProfile.hobbies?.length || 0,
+          });
+
+          const token = localStorage.getItem("authToken");
+          let isOwner = false;
+          if (token) {
+            try {
+              const decoded = jwtDecode(token);
+              const tokenUserId = decoded?.user?.id;
+              isOwner = tokenUserId === pathUserId;
+            } catch (err) {
+              console.error("Error decoding token:", err);
+            }
+          }
+
+          setData({
+            ...userProfile,
+            isOwner,
           });
         }
       } catch (err) {
@@ -45,15 +69,50 @@ const ResumeTemplate = () => {
     fetchProfile();
   }, []);
 
+  const removeDefaultTemplate = async () => {
+    const pathSegments = window.location.pathname.split("/");
+    const pathUserId = pathSegments[pathSegments.length - 1];
+
+    if (!pathUserId) return;
+
+    try {
+      const response = await axios.put(`http://localhost:3001/api/profile/update/${pathUserId}`, {
+        ...data,
+        resume: "",
+      });
+
+      if (response.data.success) {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Error removing template:", err);
+      alert("Failed to remove template");
+    }
+  };
+
   if (!data) {
     return <div className="text-center p-10 text-gray-600">Loading profile...</div>;
   }
 
-  // Show hobbies if there's no experience or no certifications
+  if (data.error) {
+    return <div className="text-center p-10 text-red-600">{data.error}</div>;
+  }
+
   const showHobbies = counts.experienceCount === 0 || counts.certificationsCount === 0;
 
   return (
-    <div className="w-[210mm] h-[297mm] mx-auto bg-white p-6 shadow-lg">
+    <div className="relative w-[210mm] h-[297mm] mx-auto bg-white p-6 shadow-lg">
+      {data.isOwner && (
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 mb-4">
+          <button
+            onClick={removeDefaultTemplate}
+            className="bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded shadow"
+          >
+            Remove This Template
+          </button>
+        </div>
+      )}
+
       <header className="flex justify-between items-start mb-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">{data.name}</h1>
@@ -112,7 +171,7 @@ const ResumeTemplate = () => {
         </section>
       )}
 
-      {counts.experienceCount > 0 ? (
+      {counts.experienceCount > 0 && (
         <section className="mt-4">
           <h2 className="text-lg font-bold bg-orange-100 text-orange-800 px-2 py-1 mb-2">EXPERIENCE</h2>
           {data.experience.slice(0, 1).map((exp, idx) => (
@@ -123,30 +182,30 @@ const ResumeTemplate = () => {
             </div>
           ))}
         </section>
-      ) : null}
+      )}
 
-      {counts.certificationsCount > 0 ? (
-        <div className="mt-4">
-          <h2 className="text-lg font-bold bg-orange-100 text-orange-800 px-2 py-1 mb-2">CERTIFICATIONS</h2>
-          <ul className="list-disc pl-5 space-y-1 text-sm">
-            {data.certifications.slice(0, 2).map((cert, idx) => (
-              <li key={idx}>
-                <div className="font-semibold">{cert.name}</div>
-                <div className="text-xs italic">Issued by: {cert.issuer}</div>
-                {cert.credentialId && (
-                  <div className="text-xs">Credential ID: {cert.credentialId}</div>
-                )}
-                {cert.date && <div className="text-xs">Issued: {cert.date}</div>}
-                {cert.expiryDate && (
-                  <div className="text-xs">Valid until: {cert.expiryDate}</div>
-                )}
-              </li>
-            ))}
-          </ul>
+{counts.certificationsCount > 0 && (
+  <div className="mt-4">
+    <h2 className="text-lg font-bold bg-orange-100 text-orange-800 px-2 py-1 mb-2">CERTIFICATIONS</h2>
+    <div className="flex flex-wrap gap-4">
+      {data.certifications.slice(0, 2).map((cert, idx) => (
+        <div
+          key={idx}
+          className="flex-1 min-w-[45%] space-y-1 text-sm"
+        >
+          <div className="font-semibold">{cert.name}</div>
+          <div className="text-xs italic">Issued by: {cert.issuer}</div>
+          {cert.credentialId && <div className="text-xs">Credential ID: {cert.credentialId}</div>}
+          {cert.date && <div className="text-xs">Issued: {cert.date}</div>}
+          {cert.expiryDate && <div className="text-xs">Valid until: {cert.expiryDate}</div>}
         </div>
-      ) : null}
+      ))}
+    </div>
+  </div>
+)}
 
-      {/* Only show hobbies if there is no experience or no certifications */}
+
+
       {showHobbies && counts.hobbiesCount > 0 && (
         <section className="mt-4">
           <h2 className="text-lg font-bold bg-orange-100 text-orange-800 px-2 py-1 mb-2">HOBBIES</h2>
@@ -164,7 +223,7 @@ const ResumeTemplate = () => {
       {counts.skillsCount > 0 && (
         <section className="mt-4">
           <h2 className="text-lg font-bold bg-orange-100 text-orange-800 px-2 py-1 mb-2">SKILLS</h2>
-          <div className="grid grid-cols-6 gap-x-4 gap-y-2">
+          <div className="grid grid-cols-4 gap-x-4 gap-y-2">
             {data.skills.slice(0, 8).map((skill, idx) => (
               <div key={idx} className="flex items-start">
                 <span className="text-orange-500 mr-2">•</span>

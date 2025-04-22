@@ -1,5 +1,6 @@
 import { Job } from "../models/Job.js";
 import { User } from "../models/User.js";
+import { Profile } from "../models/Profile.js";
 
 // Create Job
 // Create Job
@@ -151,26 +152,39 @@ export const deleteJob = async (req, res) => {
 
 // Apply for Job
 export const applyForJob = async (req, res) => {
-    try {
-      const { jobId } = req.params;
-      const { userId } = req.body;
-  
-      const job = await Job.findById(jobId);
-      if (!job) {
-        return res.status(404).json({ message: "Job not found" });
-      }
-  
-      if (job.appliedUsers.includes(userId)) {
-        return res.status(400).json({ message: "User already applied for this job" });
-      }
-  
-      job.appliedUsers.push(userId);
-      await job.save();
-  
-      res.status(200).json({ message: "Applied successfully", job });
-    } catch (error) {
-      console.error("Apply error:", error);
-      res.status(500).json({ message: "Internal Server Error" });
+  try {
+    const { jobId } = req.params;
+    const { userId } = req.body;
+
+    // Find the job
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
     }
-  };
+
+    // Check if user already applied
+    if (job.appliedUsers.includes(userId)) {
+      return res.status(400).json({ message: "User already applied for this job" });
+    }
+
+    // Update job with the user ID
+    job.appliedUsers.push(userId);
+    await job.save();
+
+    // Update user profile with the job ID
+    const profile = await Profile.findOne({ userId });
+    if (profile) {
+      // Add job to user's applied jobs if not already there
+      if (!profile.appliedJobs.includes(jobId)) {
+        profile.appliedJobs.push(jobId);
+        await profile.save();
+      }
+    }
+
+    res.status(200).json({ message: "Applied successfully", job });
+  } catch (error) {
+    console.error("Apply error:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
   

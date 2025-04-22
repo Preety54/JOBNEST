@@ -34,9 +34,9 @@ const Navbar = () => {
             <Link to="/addjob" className="text-lg font-bold hover:text-blue-500">Add New Job</Link>
           </li>
 
-          {/* <li>
-            <Link to="/addjob" className="text-lg font-bold hover:text-blue-500"></Link>
-          </li> */}
+          <li>
+            <Link to="/users" className="text-lg font-bold hover:text-blue-500">Users</Link>
+          </li>
         </ul>
 
         <div className="hidden md:flex items-center space-x-4">

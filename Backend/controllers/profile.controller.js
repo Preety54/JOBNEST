@@ -19,6 +19,7 @@ export const createProfile = async (req, res) => {
       certifications,
       hobbies,
       imageSrc,
+      resume,
     } = req.body
 
     // Check if profile already exists for this user
@@ -46,6 +47,7 @@ export const createProfile = async (req, res) => {
       certifications: certifications || [],
       hobbies: hobbies || [],
       imageSrc: imageSrc || "https://via.placeholder.com/100",
+      resume,
     })
 
     await newProfile.save()
@@ -113,8 +115,17 @@ export const getAllProfiles = async (req, res) => {
 // Update profile
 export const updateProfile = async (req, res) => {
   try {
-    const { userId } = req.params
-    const { name, designation, email, phone, linkedin, github, description } = req.body
+    const { userId } = req.params;
+    const {
+      name,
+      designation,
+      email,
+      phone,
+      linkedin,
+      github,
+      description,
+      resume, // ✅ include resume
+    } = req.body;
 
     const updatedProfile = await Profile.findOneAndUpdate(
       { userId },
@@ -126,32 +137,33 @@ export const updateProfile = async (req, res) => {
         linkedin,
         github,
         description,
+        resume, // ✅ include resume
         updatedAt: Date.now(),
       },
-      { new: true },
-    )
+      { new: true }
+    );
 
     if (!updatedProfile) {
       return res.status(404).json({
         success: false,
         message: "Profile not found",
-      })
+      });
     }
 
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
       profile: updatedProfile,
-    })
+    });
   } catch (error) {
-    console.error("Error updating profile:", error)
+    console.error("Error updating profile:", error);
     res.status(500).json({
       success: false,
       message: "Internal Server Error",
       error: error.message,
-    })
+    });
   }
-}
+};
 
 // Delete profile
 export const deleteProfile = async (req, res) => {
@@ -835,3 +847,37 @@ export const updateProfileImage = async (req, res) => {
     })
   }
 }
+
+export const getProfileByUserIds = async (req, res) => {
+  try {
+    const { id } = req.params; // <- this is important!
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Profile ID is required",
+      });
+    }
+
+    const profile = await Profile.findOne({ _id: id });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile not found for this ID",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      profile,
+    });
+  } catch (error) {
+    console.error("Error fetching profile by _id:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};

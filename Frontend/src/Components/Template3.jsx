@@ -13,22 +13,26 @@ const Template3 = () => {
     projects: [],
   });
 
-  // Fetch profile from token
   useEffect(() => {
     const fetchProfile = async () => {
-      const token = localStorage.getItem("authToken");
-      if (!token) return;
+      const pathSegments = window.location.pathname.split("/");
+      const templateName = pathSegments[1];
+      const pathUserId = pathSegments[pathSegments.length - 1];
+
+      if (!pathUserId) return;
 
       try {
-        const decoded = jwtDecode(token);
-        const userId = decoded?.user?.id;
-        if (!userId) return;
-
-        const res = await axios.get(`http://localhost:3001/api/profile/user/${userId}`);
+        const res = await axios.get(
+          `http://localhost:3001/api/profile/user/${pathUserId}`
+        );
         if (res.data.success && res.data.profile) {
           const userProfile = res.data.profile;
 
-          // Set profile data
+          if (userProfile.resume !== templateName) {
+            setData({ error: "Resume not found" });
+            return;
+          }
+
           setProfile({
             education: userProfile.education || [],
             hobbies: userProfile.hobbies || [],
@@ -38,7 +42,22 @@ const Template3 = () => {
             projects: userProfile.projects || [],
           });
 
-          setData(userProfile);
+          const token = localStorage.getItem("authToken");
+          let isOwner = false;
+          if (token) {
+            try {
+              const decoded = jwtDecode(token);
+              const tokenUserId = decoded?.user?.id;
+              isOwner = tokenUserId === pathUserId;
+            } catch (err) {
+              console.error("Error decoding token:", err);
+            }
+          }
+
+          setData({
+            ...userProfile,
+            isOwner,
+          });
         }
       } catch (err) {
         console.error("Error fetching profile:", err);
@@ -48,134 +67,157 @@ const Template3 = () => {
     fetchProfile();
   }, []);
 
-  // Loading state
-  if (!data) {
-    return <div className="text-center p-10 text-gray-600">Loading profile...</div>;
-  }
+  const removeDefaultTemplate = async () => {
+    const pathSegments = window.location.pathname.split("/");
+    const pathUserId = pathSegments[pathSegments.length - 1];
+    if (!pathUserId) return;
 
-  // Count values for each array
-  const certificationsCount = Array.isArray(data.certifications) ? data.certifications.length : 0;
-  const hobbiesCount = Array.isArray(data.hobbies) ? data.hobbies.length : 0;
-  const skillsCount = Array.isArray(data.skills) ? data.skills.length : 0;
-  const educationCount = Array.isArray(data.education) ? data.education.length : 0;
-  const experienceCount = Array.isArray(data.experience) ? data.experience.length : 0;
-  const projectsCount = Array.isArray(data.projects) ? data.projects.length : 0;
+    try {
+      const response = await axios.put(
+        `http://localhost:3001/api/profile/update/${pathUserId}`,
+        {
+          ...data,
+          resume: "",
+        }
+      );
+      if (response.data.success) {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Error removing template:", err);
+      alert("Failed to remove template");
+    }
+  };
+
+  if (!data) return <div className="text-center p-10 text-gray-600">Loading profile...</div>;
+  if (data.error) return <div className="text-center p-10 text-red-600">{data.error}</div>;
+
+  const certificationsCount = data.certifications?.length || 0;
+  const hobbiesCount = data.hobbies?.length || 0;
+  const skillsCount = data.skills?.length || 0;
+  const educationCount = data.education?.length || 0;
+  const experienceCount = data.experience?.length || 0;
+  const projectsCount = data.projects?.length || 0;
 
   return (
-    <div className="w-[210mm] h-[297mm] mx-auto bg-gray-50 shadow-lg">
-      {/* Header Section */}
-      <header className="bg-gray-100 py-6 px-8 text-center">
-        <h1 className="text-3xl font-semibold text-gray-800">{`${data.name}`}</h1>
-        <p className="text-gray-500 uppercase tracking-wider text-sm mt-1">{data.designation}</p>
-        <div className="text-gray-600 text-sm mt-2">
-          {data.phone} | {data.location} | {data.email}
+    <>
+      {/* Remove Button on top center */}
+      {data?.isOwner && (
+        <div className="fixed top-5 left-1/2 transform -translate-x-1/2 z-50">
+          <button
+            onClick={removeDefaultTemplate}
+            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded shadow"
+          >
+            Remove this template as default
+          </button>
         </div>
-      </header>
+      )}
 
-      {/* Summary Section */}
-      <section className="bg-gray-300 py-4 px-8">
-        <h2 className="text-gray-700 font-medium mb-2 text-center">ABOUT</h2>
-        <p className="text-gray-700 text-sm text-center">{data.description}</p>
-      </section>
+      <div className="w-[210mm] h-[297mm] mx-auto bg-gray-50 shadow-lg overflow-hidden">
+        {/* Header */}
+        <header className="bg-gray-100 py-6 px-8 text-center">
+          <h1 className="text-3xl font-semibold text-gray-800">{data.name}</h1>
+          <p className="text-gray-500 uppercase tracking-wider text-sm mt-1">{data.designation}</p>
+          <div className="text-gray-600 text-sm mt-2">
+            {data.phone} | {data.location} | {data.email}
+          </div>
+        </header>
 
-      {/* Main Content */}
-      <main className="bg-white px-8 py-6">
-        {/* Education Section */}
-        {educationCount > 0 && (
-          <section className="mb-6">
-            <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">EDUCATION</h2>
-            {Array.isArray(data.education) &&
-              data.education.map((edu, idx) => (
+        {/* About */}
+        <section className="bg-gray-300 py-4 px-8">
+          <h2 className="text-gray-700 font-medium mb-2 text-2xl text-center">ABOUT</h2>
+          <p className="text-gray-700 text-sm text-center">{data.description}</p>
+        </section>
+
+        {/* Main Content */}
+        <main className="bg-white px-8 py-6">
+          {/* Education */}
+          {educationCount > 0 && (
+            <section className="mb-6">
+              <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">EDUCATION</h2>
+              {data.education.map((edu, idx) => (
                 <div key={idx}>
                   <h3 className="font-medium">{edu.degree} | {edu.institution}</h3>
                   <p className="text-sm text-gray-600">{edu.fromYear} - {edu.toYear}</p>
                   <p className="text-sm">{edu.cgpa}</p>
                 </div>
               ))}
-          </section>
-        )}
+            </section>
+          )}
 
-        {/* Experience Section */}
-        {experienceCount > 0 && (
-          <section className="mb-6">
-            <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">EXPERIENCE</h2>
-            {Array.isArray(data.experience) &&
-              data.experience.map((exp, idx) => (
+          {/* Experience */}
+          {experienceCount > 0 && data.experience.length > 0 ? (
+            <section className="mb-6">
+              <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">EXPERIENCE</h2>
+              {data.experience.map((exp, idx) => (
                 <div key={idx}>
                   <h3 className="font-medium">{exp.company}</h3>
                   <p className="text-sm text-gray-600">{exp.title} | {exp.fromYear} - {exp.toYear}</p>
-                  <ul className="mt-2 space-y-1">
-                    {Array.isArray(exp.responsibilities) &&
-                      exp.responsibilities.map((resp, idx) => (
-                        <li key={idx} className="text-sm text-gray-600">- {resp}</li>
-                      ))}
-                  </ul>
+                  <p className="mt-2 text-sm text-gray-600">{exp.description}</p>
                 </div>
               ))}
-          </section>
-        )}
+            </section>
+          ) : (
+            <p className="text-gray-600">No experience data available.</p>
+          )}
 
-        {/* Skills Section - Always present */}
-        {skillsCount > 0 && (
-          <section className="mb-6">
-            <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">SKILLS</h2>
-            <div className="grid grid-cols-4 gap-y-1">
-              {Array.isArray(data.skills) &&
-                data.skills.map((skill, idx) => (
+
+
+          {/* Skills */}
+          {skillsCount > 0 && (
+            <section className="mb-6">
+              <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">SKILLS</h2>
+              <div className="grid grid-cols-4 gap-y-1">
+                {data.skills.map((skill, idx) => (
                   <div key={idx} className="flex items-center">
                     <span className="text-gray-400 mr-2">•</span>
                     <span className="text-sm">{skill}</span>
                   </div>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* Projects */}
+          {projectsCount > 0 && (
+            <div className="mb-8">
+              <div className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">
+                <h2 className="font-bold">PROJECTS</h2>
+              </div>
+              <div className="pl-4">
+                {data.projects.map((project, index) => (
+                  <div key={index} className="mb-5">
+                    <h3 className="font-bold text-gray-700 text-lg">{project.name}</h3>
+                    {(project.companyName || project.startDate || project.endDate) && (
+                      <p className="text-sm italic text-gray-600">
+                        {project.companyName || "Company Not Specified"}{" "}
+                        {project.startDate && `| ${project.startDate}`}{" "}
+                        {project.endDate && `– ${project.endDate}`}
+                      </p>
+                    )}
+                    {project.description && (
+                      <p className="text-sm text-gray-700 mt-1">{project.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </section>
-        )}
-
-       {/* Projects - Styled like Education & Experience with Company, Duration, Description */} 
-{Array.isArray(data.projects) && data.projects.length > 0 && (
-  <div className="mb-8">
-    <div className="bg-[#5b8a9a] text-white py-2 px-6 rounded-r-full inline-block mb-2 flex items-center gap-2">
-      <h2 className="font-bold">PROJECTS</h2>
-    </div>
-    <div className="pl-4 space-y-4">
-      {data.projects.map((project, index) => (
-        <div key={index}>
-          {/* Project Name */}
-          <h3 className="font-bold text-gray-700 text-lg">{project.name}</h3>
-
-          {/* Company and Duration */}
-          {(project.companyName || project.startDate || project.endDate) && (
-            <p className="text-sm italic text-gray-600">
-              {project.companyName || "Company Not Specified"}{" "}
-              {project.startDate && `| ${project.startDate}`}{" "}
-              {project.endDate && `– ${project.endDate}`}
-            </p>
           )}
 
-          {/* Description */}
-          {project.description && (
-            <p className="text-sm text-gray-700 mt-1">{project.description}</p>
-          )}
-        </div>
-      ))}
-    </div>
-  </div>
-)}
-
-
-        {/* Hobbies Section - Conditionally rendered */}
-        {(experienceCount === 0 && certificationsCount === 0) || certificationsCount === 0 ? (
-          <section>
-            <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">HOBBIES</h2>
-            <ul className="space-y-1">
-              {Array.isArray(data.hobbies) &&
-                data.hobbies.map((hobby, idx) => (
+          {/* Hobbies (conditionally shown based on logic) */}
+          {((experienceCount === 1 && projectsCount === 1) || (experienceCount === 0 && projectsCount === 2)) && hobbiesCount > 0 && (
+            <section>
+              <h2 className="text-gray-700 font-medium mb-3 pb-1 border-b border-gray-200">HOBBIES</h2>
+              <ul className="space-y-1">
+                {data.hobbies.map((hobby, idx) => (
                   <li key={idx} className="text-sm">{hobby}</li>
                 ))}
-            </ul>
-          </section>
-        ) : null}
-      </main>
+              </ul>
+            </section>
+          )}
+
+        </main>
+      </div>
 
       <style jsx>{`
         @media print {
@@ -195,8 +237,9 @@ const Template3 = () => {
           margin: 0;
         }
       `}</style>
-    </div>
+    </>
   );
 };
 
 export default Template3;
+

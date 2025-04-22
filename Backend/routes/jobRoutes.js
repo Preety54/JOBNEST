@@ -30,4 +30,6 @@ router.delete("/delete-job/:jobId", deleteJob);
 // Apply for Job Route
 router.post("/apply/:jobId", applyForJob);
 
+
+
 export default router;

@@ -7,29 +7,95 @@ export default function Template4() {
 
     useEffect(() => {
         const fetchProfile = async () => {
-            const token = localStorage.getItem("authToken");
-            if (!token) return;
-
-            try {
-                const decoded = jwtDecode(token);
-                const userId = decoded?.user?.id;
-                if (!userId) return;
-
-                const res = await axios.get(`http://localhost:3001/api/profile/user/${userId}`);
-                if (res.data.success && res.data.profile) {
-                    setData(res.data.profile);
+          // Always extract userId from URL
+          const pathSegments = window.location.pathname.split("/")
+          const templateName = pathSegments[1]
+          const pathUserId = pathSegments[pathSegments.length - 1]
+      
+          if (!pathUserId) {
+            console.error("No userId found in URL")
+            return
+          }
+      
+          try {
+            const res = await axios.get(`http://localhost:3001/api/profile/user/${pathUserId}`)
+            if (res.data.success && res.data.profile) {
+              const userProfile = res.data.profile
+      
+              // ❌ If resume value doesn't match the current template, show error
+              if (userProfile.resume !== templateName) {
+                setData({ error: "Resume not found" })
+                return
+              }
+      
+              // ✅ Set profile data
+              setData({
+                education: userProfile.education || [],
+                hobbies: userProfile.hobbies || [],
+                certifications: userProfile.certifications || [],
+                skills: userProfile.skills || [],
+                experience: userProfile.experience || [],
+                projects: userProfile.projects || [],
+              })
+      
+              // Optionally get token for isOwner logic
+              const token = localStorage.getItem("authToken")
+              let isOwner = false
+              if (token) {
+                try {
+                  const decoded = jwtDecode(token)
+                  const tokenUserId = decoded?.user?.id
+                  isOwner = tokenUserId === pathUserId
+                } catch (err) {
+                  console.error("Error decoding token:", err)
                 }
-            } catch (err) {
-                console.error("Error fetching profile:", err);
+              }
+      
+              // ✅ Set main data
+              setData({
+                ...userProfile,
+                isOwner,
+              })
             }
-        };
-
-        fetchProfile();
-    }, []);
-
-    if (!data) {
-        return <div className="text-center p-10 text-gray-600">Loading profile...</div>;
-    }
+          } catch (err) {
+            console.error("Error fetching profile:", err)
+          }
+        }
+      
+        fetchProfile()
+      }, [])
+    
+      const removeDefaultTemplate = async () => {
+        const pathSegments = window.location.pathname.split("/")
+        const pathUserId = pathSegments[pathSegments.length - 1]
+      
+        if (!pathUserId) return
+      
+        try {
+          const response = await axios.put(`http://localhost:3001/api/profile/update/${pathUserId}`, {
+            ...data,
+            resume: "", // Clear the resume
+          })
+      
+          if (response.data.success) {
+            window.location.reload() // 🔄 Refresh the page
+          }
+        } catch (err) {
+          console.error("Error removing template:", err)
+          alert("Failed to remove template")
+        }
+      }
+      
+      
+    
+      // Loading state or error state
+      if (!data) {
+        return <div className="text-center p-10 text-gray-600">Loading profile...</div>
+      }
+    
+      if (data.error) {
+        return <div className="text-center p-10 text-red-600">{data.error}</div>
+      }
 
     const {
         name,
@@ -47,6 +113,17 @@ export default function Template4() {
     const showHobbies = !hasCertifications && hobbies.length > 0;
 
     return (
+        <>
+    {data?.isOwner && (
+      <div className="w-full bg-gray-100 p-4 text-center">
+        <button
+          onClick={removeDefaultTemplate}
+          className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
+        >
+          Remove this template as default
+        </button>
+      </div>
+    )}
         <div className="max-w-3xl mx-auto p-6 bg-[#f8f3eb] min-h-screen relative">
             {/* Decorative elements */}
             <div className="absolute top-0 left-0 w-32 h-16 bg-[#f0e6d9] z-0"></div>
@@ -164,5 +241,6 @@ export default function Template4() {
                 </div>
             </div>
         </div>
+        </>
     );
 }

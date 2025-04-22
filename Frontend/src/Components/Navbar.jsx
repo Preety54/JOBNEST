@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Menu, X, User } from "lucide-react"; // Import the User icon
-import { useLocation } from "react-router-dom";
+import { jwtDecode } from "jwt-decode"; // Import jwt-decode to decode the token
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
-  
+
   // ✅ Fix: Read authToken correctly on mount
   const getAuthStatus = () => !!localStorage.getItem("authToken");
   const [isAuthenticated, setIsAuthenticated] = useState(getAuthStatus);
@@ -32,15 +32,18 @@ const Navbar = () => {
     window.location.reload(); // ✅ Refresh page after logout
   };
 
-  // Navigate to user profile page
+  // Decode the user ID from the authToken and navigate to the user profile page
   const navigateToProfile = () => {
-    navigate("/userProfile");
+    const decodedToken = jwtDecode(localStorage.getItem("authToken"));
+    const userId = decodedToken.user.id; // Extract the user ID from the token
+    navigate(`/userprofile/${userId}`); // Pass the user ID dynamically to the route
   };
+  
 
   return (
     <nav className="bg-white shadow-md p-4 fixed top-0 w-full z-50">
       <div className="container mx-auto flex justify-between items-center px-4 md:px-6">
-        
+
         {/* Logo */}
         <div className="text-2xl font-bold">Jobnest</div>
 

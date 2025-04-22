@@ -1,7 +1,6 @@
+// App.jsx
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Navbar from "./Components/Navbar";
-import Footer from "./Components/Footer";
 import HomePage from "./Components/HomePage";
 import Login from "./Components/Login";
 import AdminLogin from "./Components/AdminLogin";
@@ -26,17 +25,66 @@ import UserProfile from "./Components/UserProfile";
 import FilterJob from "./Components/Filterjob";
 import EditJob from "./Components/EditJob";
 import AddJob from "./Components/AddJob";
+import Users from "./Components/Users";
+import AppliedJobs from "./Components/AppliedJobs";
+
+import AdminRoute from "./utils/AdminRoutes";
 
 function App() {
   return (
     <Router>
-      {/* <Navbar /> */}
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/userprofile" element={<UserProfile />} />
+        <Route path="/userprofile/:id" element={<UserProfile />} />
         <Route path="/about" element={<AboutUs />} />
-        <Route path="/adminhome" element={<AdminHome />} />
-        <Route path="/adminhero" element={<Adminhero/>} />
+        <Route
+          path="/adminhome"
+          element={
+            <AdminRoute>
+              <AdminHome />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/adminhero"
+          element={
+            <AdminRoute>
+              <Adminhero />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/addjob"
+          element={
+            <AdminRoute>
+              <AddJob />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/editjob/:jobId"
+          element={
+            <AdminRoute>
+              <EditJob />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <AdminRoute>
+              <Users />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/appliedjobs/:id"
+          element={
+            <AdminRoute>
+              <AppliedJobs />
+            </AdminRoute>
+          }
+        />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/reviews" element={<Review />} />
         <Route path="/contact" element={<ContactUs />} />
@@ -44,22 +92,21 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/register" element={<Register />} />
-
-        {/* Previously Protected Routes - Now Open to All */}
         <Route path="/apply" element={<Apply />} />
         <Route path="/applyjob" element={<ApplyJob />} />
         <Route path="/resume" element={<Resume />} />
         <Route path="/template" element={<Template />} />
-        <Route path="/template1" element={<Template1/>} />
-        <Route path="/template2" element={<Template2 />} />
-        <Route path="/template3" element={<Template3 />} />
-        <Route path="/template4" element={<Template4 />} />
-        <Route path="/template5" element={<Template5 />} />
+        <Route path="/template1/:id" element={<Template1 />} />
+        <Route path="/template2/:id" element={<Template2 />} />
+        <Route path="/template3/:id" element={<Template3 />} />
+        <Route path="/template4/:id" element={<Template4 />} />
+        <Route path="/template5/:id" element={<Template5 />} />
         <Route path="/preview" element={<Preview />} />
-        <Route path="/editjob/:jobId" element={<EditJob />} />
-        <Route path="/addjob" element={<AddJob />} />
+        {/* <Route path="/editjob/:jobId" element={<EditJob />} /> */}
+        {/* <Route path="/addjob" element={<AddJob />} /> */}
+        {/* <Route path="/users" element={<Users />} /> */}
+        {/* <Route path="/appliedjobs/:id" element={<AppliedJobs />} /> */}
       </Routes>
-      {/* <Footer /> */}
     </Router>
   );
 }

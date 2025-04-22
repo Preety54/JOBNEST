@@ -1,16 +1,16 @@
 import mongoose from "mongoose"
 
 const EducationSchema = new mongoose.Schema({
-  degree: { type: String, required: true },
-  institution: { type: String, required: true },
-  fromYear: { type: String, required: true },
-  toYear: { type: String, required: true },
+  degree: { type: String },
+  institution: { type: String },
+  fromYear: { type: String },
+  toYear: { type: String },
   cgpa: { type: String },
   isPercentage: { type: Boolean, default: false },
 })
 
 const ProjectSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  name: { type: String },
   companyName: { type: String },
   startDate: { type: String },
   endDate: { type: String },
@@ -18,16 +18,16 @@ const ProjectSchema = new mongoose.Schema({
 })
 
 const ExperienceSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  company: { type: String, required: true },
-  fromYear: { type: String, required: true },
-  toYear: { type: String, required: true },
+  title: { type: String },
+  company: { type: String },
+  fromYear: { type: String },
+  toYear: { type: String },
   description: { type: String },
 })
 
 const CertificationSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  issuer: { type: String, required: true },
+  name: { type: String },
+  issuer: { type: String },
   credentialId: { type: String },
   date: { type: String },
   expiryDate: { type: String },
@@ -40,21 +40,22 @@ const ProfileSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
-  name: { type: String, required: true },
-  designation: { type: String },
-  email: { type: String, required: true },
-  phone: { type: String },
-  linkedin: { type: String },
-  github: { type: String },
-  description: { type: String },
-  location:{ type: String },
+  name: { type: String, default: "" },
+  designation: { type: String, default: "" },
+  email: { type: String, default: "" },
+  phone: { type: String, default: "" },
+  linkedin: { type: String, default: "" },
+  github: { type: String, default: "" },
+  description: { type: String, default: "" },
+  location: { type: String, default: "" },
   skills: [{ type: String }],
   education: [EducationSchema],
   projects: [ProjectSchema],
   experience: [ExperienceSchema],
   certifications: [CertificationSchema],
   hobbies: [{ type: String }],
-  imageSrc: { type: String, default: "https://via.placeholder.com/100" },
+  imageSrc: { type: String, default: "" },
+  resume: { type: String, default: "" }, // ✅ New resume field
   createdAt: {
     type: Date,
     default: Date.now,
@@ -63,6 +64,12 @@ const ProfileSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  appliedJobs: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+    },
+  ],
 })
 
 // Update the updatedAt field on save
